@@ -25,7 +25,8 @@ public class DA270ALab1Server {
     private static final int PORT = 8000;
     private ServerSocket serverSocket;
     
-    private String command = " ";
+//    private String command = " ";
+    private byte command;
     String directory;
     File curDir;// = new File(directory);
     
@@ -66,47 +67,48 @@ public class DA270ALab1Server {
                 DataOutputStream outputToClient = new DataOutputStream(socket.getOutputStream());
 
                 while (true) {
-                    command = inputFromClient.readUTF();
+                    command = inputFromClient.readByte();
+                    System.out.println(command);
 
-                    if (command.equalsIgnoreCase("pwd")) {
-                        
-                        System.out.println("retrieved command: pwd");
-                        outputToClient.writeUTF("status ok \ncurrent directory: " + directory + "\n");
-                        
-                    } else if (command.equalsIgnoreCase("printfiles")) {
-                        
-                        System.out.println("retrieved command: printfiles");
-                        
-                        for (File f : filesList) {
-                            
-                            if (f.isDirectory()) {
-                                System.out.println("directory: " + f.getName());
-                                files = files + "directory: " + f.getName() + "\n";
-                            }
-                            if (f.isFile()) {
-                                System.out.println("file: " + f.getName());
-                                files = files + "file: " + f.getName() + "\n";
-                            }
-                        }
-                        
-                        outputToClient.writeUTF(files);
-                        outputToClient.flush();
-                        
-                    } else if (command.equalsIgnoreCase("download")) {
-                        
-                        byte[] myByteArray = new byte[1024*16];
-                        
-                        transferFile = new File("s.txt");
-                        FileInputStream fin = new FileInputStream(transferFile);
-                        
-                        while(fin.available() > 0){
-                            BufferedOutputStream bos = new BufferedOutputStream(socket.getOutputStream());
-                            bos.write(myByteArray, 0, fin.read(myByteArray));
-                        }
-                        
-                        
-                        System.out.println("File transferred");
-                    }
+//                    if (command.equalsIgnoreCase("pwd")) {
+//                        
+//                        System.out.println("retrieved command: pwd");
+//                        outputToClient.writeBytes("status ok \ncurrent directory: " + directory + "\n");
+//                        
+//                    } else if (command.equalsIgnoreCase("printfiles")) {
+//                        
+//                        System.out.println("retrieved command: printfiles");
+//                        
+//                        for (File f : filesList) {
+//                            
+//                            if (f.isDirectory()) {
+//                                System.out.println("directory: " + f.getName());
+//                                files = files + "directory: " + f.getName() + "\n";
+//                            }
+//                            if (f.isFile()) {
+//                                System.out.println("file: " + f.getName());
+//                                files = files + "file: " + f.getName() + "\n";
+//                            }
+//                        }
+//                        
+//                        outputToClient.writeUTF(files);
+//                        outputToClient.flush();
+//                        
+//                    } else if (command.equalsIgnoreCase("download")) {
+//                        
+//                        byte[] myByteArray = new byte[1024*16];
+//                        
+//                        transferFile = new File("s.txt");
+//                        FileInputStream fin = new FileInputStream(transferFile);
+//                        
+//                        while(fin.available() > 0){
+//                            BufferedOutputStream bos = new BufferedOutputStream(socket.getOutputStream());
+//                            bos.write(myByteArray, 0, fin.read(myByteArray));
+//                        }
+//                        
+//                        
+//                        System.out.println("File transferred");
+//                    }
                 }
 
             } catch (Exception e) {
