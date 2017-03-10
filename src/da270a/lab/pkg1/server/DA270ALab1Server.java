@@ -6,13 +6,12 @@
 package da270a.lab.pkg1.server;
 
 import java.io.BufferedOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.io.InputStreamReader;
+import java.io.PrintStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -22,100 +21,219 @@ import java.net.Socket;
  */
 public class DA270ALab1Server {
 
-    private static final int PORT = 8000;
-    private ServerSocket serverSocket;
-    
-//    private String command = " ";
-    private byte command;
-    String directory;
-    File curDir;// = new File(directory);
-    
-    String files = "";
-    File[] filesList;
-    
-    File transferFile;
+    private static final int PORT = 8000; //Deafult port
+    private ServerSocket serverSocket = null;
+    private boolean shutdownServer = false; // this variable designed to be changed from a diffrent thread 
 
-    public static void main(String[] args) {
+    Socket socket;
+
+    BufferedReader buffRead;
+
+    BufferedOutputStream buffOutStream;
+    PrintStream printStream;
+
+    public static void main(String[] args) throws InterruptedException {
 
         int port = PORT;
-        if (args.length == 1) {
+        if (args.length > 0) {
+//            System.out.println("port initialized");
             port = Integer.parseInt(args[0]);
         }
         new DA270ALab1Server(port);
     }
 
-    public DA270ALab1Server(int port) {
+    public DA270ALab1Server(int port) throws InterruptedException {
 
-        directory = System.getProperty("user.dir");
-        curDir = new File(directory);
-        filesList = curDir.listFiles();
+        System.out.println("port initialized");
         
+        File file = new File(".");
+
+        // create a server socket
         try {
             serverSocket = new ServerSocket(port);
         } catch (IOException e) {
-            System.err.println("Error in creation of the server socket");
-            System.exit(0);
+            System.err.println("Error in the creation of the server socket." + e);
+            System.exit(-1);
         }
 
-        while (true) {
-            try {
+        log("Server is Started on port : " + port);
 
-                Socket socket = serverSocket.accept();
-                System.out.println("Accepted connection: " + socket);
+        try {
+            SERVER_CONN:
+            while (true) { //wait for connection 
+                socket = null;
+                try {
+                    // waiting for a connection, only one connection at a time
+                    log("Server is waiting for a connection...");
+                    socket = serverSocket.accept(); //code block here until connection
 
-                DataInputStream inputFromClient = new DataInputStream(socket.getInputStream());
-                DataOutputStream outputToClient = new DataOutputStream(socket.getOutputStream());
+                    log("Got request from " + socket.getInetAddress());
 
-                while (true) {
-                    command = inputFromClient.readByte();
-                    System.out.println(command);
+                    buffRead = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-//                    if (command.equalsIgnoreCase("pwd")) {
-//                        
-//                        System.out.println("retrieved command: pwd");
-//                        outputToClient.writeBytes("status ok \ncurrent directory: " + directory + "\n");
-//                        
-//                    } else if (command.equalsIgnoreCase("printfiles")) {
-//                        
-//                        System.out.println("retrieved command: printfiles");
-//                        
-//                        for (File f : filesList) {
-//                            
-//                            if (f.isDirectory()) {
-//                                System.out.println("directory: " + f.getName());
-//                                files = files + "directory: " + f.getName() + "\n";
-//                            }
-//                            if (f.isFile()) {
-//                                System.out.println("file: " + f.getName());
-//                                files = files + "file: " + f.getName() + "\n";
-//                            }
-//                        }
-//                        
-//                        outputToClient.writeUTF(files);
-//                        outputToClient.flush();
-//                        
-//                    } else if (command.equalsIgnoreCase("download")) {
-//                        
-//                        byte[] myByteArray = new byte[1024*16];
-//                        
-//                        transferFile = new File("s.txt");
-//                        FileInputStream fin = new FileInputStream(transferFile);
-//                        
-//                        while(fin.available() > 0){
-//                            BufferedOutputStream bos = new BufferedOutputStream(socket.getOutputStream());
-//                            bos.write(myByteArray, 0, fin.read(myByteArray));
-//                        }
-//                        
-//                        
-//                        System.out.println("File transferred");
-//                    }
+                    buffOutStream = new BufferedOutputStream(socket.getOutputStream()); //will be used to send files
+                    printStream = new PrintStream(buffOutStream); //will be used to send messages
+
+                    while (true) { //wait for input from client
+                        String request = null;
+                        socket.setSoTimeout(120000); //wait 120 sec max
+                        try {
+                            log("The Server is waiting for a command...");
+                            long waitCommandTime = System.currentTimeMillis();
+
+                            WAIT_COMMAND:
+                            do {
+                                Thread.sleep(10);
+                                if (buffRead.ready()) {
+                                    request = buffRead.readLine();
+                                    waitCommandTime = System.currentTimeMillis();
+                                    if (request.equals("ACK")) {
+                                        log("got ACK");
+                                        //ignore the response and take the next command
+                                        continue WAIT_COMMAND;
+                                    } else {
+                                        break WAIT_COMMAND;
+                                    }
+                                }
+                                ping();
+                            } while (true);
+
+                        } catch (Exception e) {
+                            System.out.println(e);
+                            sendLine("The connnection dropped because TimeOut, it's been over 120 sec with no command.");
+                            continue SERVER_CONN; //wait for another connection 
+                        }
+
+                        //when request is null it mean the clinet socket closed
+                        if (request == null) {
+                            log("The connection closed from client's side.");
+                            continue SERVER_CONN; //take next connection
+                        }
+
+                        if (request.equalsIgnoreCase("curdir")) {
+                            log("got curdir");
+                            sendLine("Current Folder \n" + file.getAbsolutePath());
+                            sendLineTerminal();
+                            printStream.flush();
+                            
+                        } else if (request.equalsIgnoreCase("list")) {
+                            log("got list");
+                            File[] files = file.listFiles();
+                            sendLine("Total Files and Folders: " + files.length);
+                            for (File f : files) {
+                                if (f.isDirectory()) {
+                                    sendLine("[" + f.getName() + "]");
+                                } else {
+                                    sendLine(f.getName() + "\t\t\t" + f.length() / 1024 + " KB");
+                                }
+                            }
+                            sendLineTerminal();
+                            printStream.flush();
+                            
+                        } else if (request.startsWith("get ")) {
+                            log("got get");
+                            String filename = request.substring(4).trim();
+                            System.out.println(filename);
+                            File f = new File("." + File.separator + filename);
+                            if (f.exists()) {
+                                if (f.isFile()) {
+                                    sendLine("COPYING " + f.length());
+                                    printStream.flush();
+
+                                    FileInputStream fis = new FileInputStream(f);
+
+                                    byte[] b;
+                                    final int defBufferSize = 8192;
+                                    if (f.length() < defBufferSize) {
+                                        b = new byte[(int) f.length()];
+                                    } else {
+                                        b = new byte[defBufferSize]; //max of buffer
+                                    }
+
+                                    int r;
+                                    while ((r = fis.read(b)) > 0) {
+                                        buffOutStream.write(b, 0, r);
+                                    }
+                                    buffOutStream.flush();
+                                    b = null;
+                                } else { //it's a folder not file
+                                    sendLine("It is not a filename.");
+                                    sendLineTerminal();
+                                    printStream.flush();
+                                }
+                            } else { //file does not exist
+                                sendLine("The file does not exist.");
+                                sendLineTerminal();
+                                printStream.flush();
+                            }
+
+                        } else { // unknown command
+                            log("Client sent an unknown command.");
+                            sendLine("Unknown command:" + request);
+                            sendLineTerminal();
+                            printStream.flush();
+                        }
+
+                        Thread.sleep(10);
+                        if (request.startsWith("ServerShutdown")) { //command needs more work
+                            break SERVER_CONN;
+                        }
+
+                    } //waiting for a command loop 
+                } catch (IOException e) {
+                    System.out.println(e);
+
                 }
+            } //waiting for a new connection loop //waiting for a new connection loop //waiting for a new connection loop //waiting for a new connection loop //waiting for a new connection loop //waiting for a new connection loop //waiting for a new connection loop //waiting for a new connection loop
 
-            } catch (Exception e) {
-                System.err.println(e);
-            }
+            //shutdown the server
+            printStream.close();
+            buffOutStream.close();
+            buffRead.close();
+            socket.close();
+            printStream = null;
+            buffOutStream = null;
+            buffRead = null;
+            socket = null;
+
+        } catch (IOException e) {
+            System.out.println("error");
+            System.err.println(e);
         }
 
     }
 
+    private void log(String msg)
+    {
+        System.out.println(msg);
+    }
+
+    long pingTimer;
+
+    private void ping()
+    {
+        if (true) {
+            return; //disable ping
+        }
+        final int interval = 2000;
+
+        if (System.currentTimeMillis() - pingTimer > interval) {
+            printStream.println("PING"); //send heart beat
+            printStream.flush();
+            log("send PING");
+            pingTimer = System.currentTimeMillis();
+        }
+
+    }
+
+    private void sendLine(String res)
+    {
+        printStream.println(res);
+    }
+
+    private void sendLineTerminal()
+    {
+        printStream.println();
+    }
+    
 }
